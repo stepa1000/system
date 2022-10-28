@@ -49,6 +49,7 @@ library
     , extra
     , free
     , functor-combinators
+    , ghc-prim
     , invertible
     , kan-extensions
     , lens
@@ -78,6 +79,7 @@ executable sysytem-exe
     , extra
     , free
     , functor-combinators
+    , ghc-prim
     , invertible
     , kan-extensions
     , lens
@@ -109,6 +111,7 @@ test-suite sysytem-test
     , extra
     , free
     , functor-combinators
+    , ghc-prim
     , invertible
     , kan-extensions
     , lens

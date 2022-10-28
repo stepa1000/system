@@ -2,11 +2,13 @@
   , UndecidableInstances, ConstraintKinds, ScopedTypeVariables
   , RankNTypes, AllowAmbiguousTypes, TypeApplications, GADTs
   , MultiParamTypeClasses, DeriveGeneric, DataKinds
+  , DerivingVia, BangPatterns
 #-}
 module Control.Core.Powsition where
 
 import GHC.Generics
 import GHC.TypeLits
+-- import GHC.Prim
 
 import Control.Monad.Trans.Adjoint as M
 import Control.Comonad.Trans.Adjoint as W
@@ -32,14 +34,17 @@ import Data.Functor.Sum
 import Data.Profunctor
 import Data.Profunctor.Composition
 import Data.Bifunctor.Functor
-import Data.Functor.Rep
+import Data.Functor.Rep as Adj
 
 import Data.Distributive
 import Data.Either
 import Data.Typeable
 import Data.Maybe
 
+import Data.Bifunctor
 import Data.These
+import Data.Functor.Identity
+import Unsafe.Coerce
 
 data (:^^:) a b = Powsition a b
 
@@ -169,7 +174,8 @@ treeAdj :: ( CxtSystemCore s, SysAdjMonad s a ~ SysAdjMonad (TreeAdj 0 'False s)
 treeAdj (s :: SysAdjMonad s a) = fromJust $ cast s
 
 data TreeAdjGADF n b s a where
-	NodeTAF :: ( KnownNat (n - 1), Typeable (1 <=? (n-1)), KnownNat n) 
+	NodeTAF :: ( KnownNat (n - 1), Typeable (1 <=? (n-1)), KnownNat n
+		) 
 		=> ((SysAdjF s) :.: (MF.Free (TreeAdjGADF (n - 1) (1 <=? (n-1)) s))) a -> TreeAdjGADF n b s a
 	LeafTAF :: SysAdjF s a -> TreeAdjGADF 0 'False s a
 
@@ -185,20 +191,78 @@ instance Traversable (SysAdjF s) => Traversable (TreeAdjGADF n b s) where
 	sequenceA (LeafTAF s) = LeafTAF <$> sequenceA s
 	sequenceA (NodeTAF s) = NodeTAF <$> sequenceA s
 
-data TreeAdjGADG n b s a where
-	NodeTAG ::  (KnownNat (n - 1), Typeable (1 <=? (n-1)), KnownNat n) 
-		=> ((CF.Cofree (TreeAdjGADG (n - 1) (1 <=? (n-1)) s)) :.: (SysAdjG s)) a -> TreeAdjGADG n b s a
-	LeafTAG :: SysAdjG s a -> TreeAdjGADG 0 'False s a
+data TreeAdjGADG n b s a = (KnownNat (n - 1), Typeable (1 <=? (n-1)), KnownNat n) 
+		=> NodeTAG 
+			(((CF.Cofree (TreeAdjGADG (n - 1) (1 <=? (n-1)) s)) :.: (SysAdjG s)) a) 
+			(SysAdjG s a)
 
-unionTreeAdjGADF :: ( CxtSystemCore s1, CxtSystemCore s2, CxtSystemCore s3
-	, Typeable s1, Typeable a, Applicative (SysAdjF s1), Traversable (SysAdjF s1), Traversable (SysAdjF s3)
+--	LeafTAG :: SysAdjG s a -> TreeAdjGADG 0 'False s a Distributive not Sum
+
+instance Functor (SysAdjG s) => Functor (TreeAdjGADG n b s) where
+	fmap f (NodeTAG s fs) = NodeTAG (fmap f s) (fmap f fs)
+
+instance Foldable (SysAdjG s) => Foldable (TreeAdjGADG n b s) where
+	foldMap f (NodeTAG s fs) = (foldMap f s) <> (foldMap f fs)
+
+instance Traversable (SysAdjG s) => Traversable (TreeAdjGADG n b s) where
+	sequenceA (NodeTAG s fs) = f2 <$> sequenceA (s :*: fs)
+		where
+			f (NodeTAG s fs) = (s :*: fs) 
+			f2 (s :*: fs) = (NodeTAG s fs)
+
+instance (Distributive (SysAdjG s), Distributive (TreeAdjGADG (n - 1) (1 <=? (n-1)) s)
+		, KnownNat (n - 1), Typeable (1 <=? (n-1)), KnownNat n
+		) => Distributive (TreeAdjGADG n b s) where
+	distribute s = (\(s :*: fs) -> (NodeTAG s fs)) $ distribute $ fmap f s
+		where
+			f (NodeTAG s fs) = (s :*: fs) 
+			f2 (s :*: fs) = (NodeTAG s fs)
+
+instance (Representable (SysAdjG s), Representable (TreeAdjGADG (n - 1) (1 <=? (n-1)) s)
+		, KnownNat (n - 1), Typeable (1 <=? (n-1)), KnownNat n
+		-- , Adj.Rep (TreeAdjGADG n b s) ~ Adj.Rep (((CF.Cofree (TreeAdjGADG (n - 1) (1 <=? (n-1)) s)) :.: (SysAdjG s)) :*: ((SysAdjG s)))
+		) => Representable (TreeAdjGADG n b s) where
+	type Rep (TreeAdjGADG n b s) = Either (WrappedRep (CF.Cofree (TreeAdjGADG (n - 1) (1 <=? (n-1)) s)), WrappedRep (SysAdjG s) ) (WrappedRep (SysAdjG s)) 
+-- GRep (((CF.Cofree (TreeAdjGADG (n - 1) (1 <=? (n-1)) s)) :.: (SysAdjG s)) :*: (SysAdjG s))
+--		(((CF.Cofree (TreeAdjGADG (n - 1) (1 <=? (n-1)) s)) :.: (SysAdjG s)) :*: ((SysAdjG s)))
+	tabulate f = NodeTAG (tabulate (f . Left . bimap WrapRep WrapRep) ) (tabulate (f . Right . WrapRep))
+	index (NodeTAG s fs) = either id id . bimap (index s . bimap unwrapRep unwrapRep) (index fs . unwrapRep) -- index (s :*: fs) $ _b rs
+
+--data SizeN n1 n2 f a = ((n1 <= n2) ~ True) => SizeN (f n1 a)
+
+data SizeTreeF n ns b s a = (KnownNat n, KnownNat ns, (n <=? ns) ~ 'True) => SizeTreeF {unSizeTreeF :: !(TreeAdjGADF n b s a)} 
+--	deriving (Functor)
+--		via (TreeAdjGADF n b s)
+data SizeTreeG n ns b s a = (KnownNat n, KnownNat ns, (n <=? ns) ~ 'True) => SizeTreeG {unSizeTreeG :: !(TreeAdjGADG n b s a)} deriving ()
+-- type instance SizeNTree n family
+
+type CxtSizeTree n ns s = (KnownNat n, KnownNat ns, (n <=? ns) ~ 'True
+	, CxtSystemCore s, KnownNat ns, (ns <=? 4) ~ 'True )
+
+instance (CxtSizeTree n ns s, Functor (SysAdjF s)) => Functor (SizeTreeF n ns b s) where
+	fmap f (SizeTreeF a) = SizeTreeF $ fmap f a
+
+instance (CxtSizeTree n ns s,Functor (SysAdjG s)) => Functor (SizeTreeG n ns b s) where
+	fmap f (SizeTreeG a) = SizeTreeG $ fmap f a
+
+instance (CxtSizeTree n ns s,Distributive (SysAdjG s)) 
+		=> Distributive (SizeTreeG n ns b s) where 
+	distribute !a = SizeTreeG !$ distribute !$ fmap unSizeTreeG a
+
+instance (CxtSizeTree n ns s) 
+		=> Adjunction (SizeTreeF n ns b s) (SizeTreeG n ns b s) where
+	unit = _a . unit
+
+
+unionTreeAdjGAD_F :: ( CxtSystemCore s1, CxtSystemCore s2, CxtSystemCore s3
+	, Typeable s1, Typeable a, Traversable (SysAdjF s1), Traversable (SysAdjF s3)
 	, Typeable s3, Typeable d
 	) 
 	=> (forall x y. SysAdjF s1 x -> SysAdjF s2 y -> SysAdjF s3 (x,y))
 	-> TreeAdjGADF n b s1 a -> TreeAdjGADF n b s2 d -> TreeAdjGADF n b s3 (a,d)
-unionTreeAdjGADF f (LeafTAF s1) (LeafTAF s2) = LeafTAF $ f s1 s2
-unionTreeAdjGADF f (NodeTAF (Comp1 s1)) (NodeTAF (Comp1 s2)) = NodeTAF $ Comp1 $ (fmap . fmap) (\(These x1 y1)->(x1,y1) ) $
-	fmap (\(x,y)-> MF.iterM (\tx-> MF.iterM (\yt-> join $ fmap (MF.wrap . fmap return) $ sequence $ fmap g $ unionTreeAdjGADF f tx yt ) (fmap (That) y) ) (fmap (This) x) ) $ f s1 s2
+unionTreeAdjGAD_F f (LeafTAF s1) (LeafTAF s2) = LeafTAF $ f s1 s2
+unionTreeAdjGAD_F f (NodeTAF (Comp1 s1)) (NodeTAF (Comp1 s2)) = NodeTAF $ Comp1 $ (fmap . fmap) (\(These x1 y1)->(x1,y1) ) $
+	fmap (\(x,y)-> MF.iterM (\tx-> MF.iterM (\yt-> join $ fmap (MF.wrap . fmap return) $ sequence $ fmap g $ unionTreeAdjGAD_F f tx yt ) (fmap (That) y) ) (fmap (This) x) ) $ f s1 s2
 	where
 		-- g2 ()
 		g (xt,yt) = xt >>= (\x2-> yt >>= (\y2-> case (x2,y2) of 
@@ -207,15 +271,30 @@ unionTreeAdjGADF f (NodeTAF (Comp1 s1)) (NodeTAF (Comp1 s2)) = NodeTAF $ Comp1 $
 			(This x,These x2 y2) -> return (These x y2)
 			(These x1 y1, That y) -> return (These x1 y)
 			))
-{-
-compileTreeAdjGADF :: ( CxtSystemCore s1
-	, Typeable s1, Typeable (SysAdjF s1), Typeable a
+
+unionTreeAdjGAD_G :: ( CxtSystemCore s1, CxtSystemCore s2, CxtSystemCore s3
+	, Typeable s1, Typeable a, Typeable (SysAdjG s1) ,Traversable (SysAdjF s1), Traversable (SysAdjF s3)
+	, Typeable s3, Typeable d, Typeable (SysAdjG s2), Typeable s2
 	) 
-	=> TreeAdjGADF n b s1 a -> SysAdjF (TreeAdj n b s1) a
-compileTreeAdjGADF (LeafTAF s1) = fromJust $ cast s1
-compileTreeAdjGADF (NodeTAF (Comp1 s1)) = fromJust $ cast $ Comp1 $ fmap (hoistFree compileTreeAdjGADF ) s1
--}
-{-	fmap (\(x,y)-> MF.foldFree (\fy-> -- fromJust $ cast
+	=> (forall x y. SysAdjG s1 x -> SysAdjG s2 y -> SysAdjG s3 (x,y))
+	-> TreeAdjGADG n b s1 a -> TreeAdjGADG n b s2 d -> TreeAdjGADG n b s3 (a,d)
+--unionTreeAdjGAD_G f (LeafTAG s) (LeafTAG s2) = LeafTAG $ f s s2
+unionTreeAdjGAD_G f (NodeTAG (Comp1 s1) fs1) (NodeTAG (Comp1 s2) fs2) = NodeTAG (Comp1 $ g s1 s2) (f fs1 fs2)
+	where	
+		g (a :< fw) (a2 :< fw2) = (f a a2) :<
+			(fmap (\(x,y)-> g x y) $ unionTreeAdjGAD_G f fw fw2)
+
+
+
+{-
+
+
+compileTreeAdjGADF :: CxtSystemCore s1  
+	=> Proxy s1 -> TreeAdjGADF n b s1 a -> SysAdjF (TreeAdj n b s1) a
+compileTreeAdjGADF _ (LeafTAF s1) = s1
+compileTreeAdjGADF (p :: Proxy s1) ( NodeTAF (Comp1 s1)) 
+	= coerce $ Comp1 $ fmap (hoistFree (compileTreeAdjGADF p) ) s1
+	fmap (\(x,y)-> MF.foldFree (\fy-> -- fromJust $ cast
 		MF.foldFree (\fx-> lift $ unionTreeAdjGADF f fx fy) x) y) $ _a $ f s1 s2
 
 

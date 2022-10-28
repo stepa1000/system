@@ -39,6 +39,7 @@ dependencies:
 - extra
 - random
 - these
+- ghc-prim
 #- bmp
 
 ghc-options:
