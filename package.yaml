@@ -1,6 +1,6 @@
 name:                system
 version:             0.1.0.0
-github:              "githubuser/sysytem"
+github:              "githubuser/system"
 license:             BSD3
 author:              "Author name here"
 maintainer:          "example@example.com"
@@ -57,7 +57,7 @@ library:
   source-dirs: src
 
 executables:
-  sysytem-exe:
+  system-exe:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -68,7 +68,7 @@ executables:
     - system
 
 tests:
-  sysytem-test:
+  system-test:
     main:                Spec.hs
     source-dirs:         test
     ghc-options:

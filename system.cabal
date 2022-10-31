@@ -7,8 +7,8 @@ cabal-version: 1.12
 name:           system
 version:        0.1.0.0
 description:    Please see the README on GitHub at <https://github.com/githubuser/sysytem#readme>
-homepage:       https://github.com/githubuser/sysytem#readme
-bug-reports:    https://github.com/githubuser/sysytem/issues
+homepage:       https://github.com/githubuser/system#readme
+bug-reports:    https://github.com/githubuser/system/issues
 author:         Author name here
 maintainer:     example@example.com
 copyright:      2022 Author name here
@@ -21,13 +21,17 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/sysytem
+  location: https://github.com/githubuser/system
 
 library
   exposed-modules:
+      Control.Core.Anything
       Control.Core.Composition
+      Control.Core.Density
       Control.Core.Powsition
+      Control.Core.Structur
       Control.Core.System
+      Control.Core.YonedaIO
       Control.Prelude
       Control.Prelude2
       Data.PicGen.Core
@@ -61,7 +65,7 @@ library
     , these
   default-language: Haskell2010
 
-executable sysytem-exe
+executable system-exe
   main-is: Main.hs
   other-modules:
       Paths_system
@@ -92,7 +96,7 @@ executable sysytem-exe
     , these
   default-language: Haskell2010
 
-test-suite sysytem-test
+test-suite system-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
