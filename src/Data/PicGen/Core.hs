@@ -1,4 +1,6 @@
-{-# Language TypeFamilies, DeriveAnyClass, TypeApplications, BangPatterns #-}
+{-# Language TypeFamilies, DeriveAnyClass, TypeApplications, BangPatterns 
+  , TypeOperators
+#-}
 
 module Data.PicGen.Core where
 
@@ -19,6 +21,9 @@ import Control.Comonad.Trans.Env as En
 import Control.Comonad
 import Control.Comonad.Trans.Class
 
+import Control.Monad.Trans.Adjoint as M
+import Control.Comonad.Trans.Adjoint as W
+
 import Data.List.NonEmpty as NE
 import Data.Word
 import Data.Proxy 
@@ -28,11 +33,14 @@ import Data.Maybe
 
 import Linear.Metric
 import Linear.V2
+import Linear
 
 import Data.Map.Lazy as Ml
 import Data.Functor.Adjunction
 
 import Control.Core.System
+import Control.Core.Composition
+import Control.Core.Structur
 
 testPic = savePicture (ray 2 (0,0) (100,50) )  "testPic" 500 500
 
@@ -129,8 +137,8 @@ mapPosition f g = \ x y -> (\(x1,y1)-> g x1 y1) $ f x y
 translate :: Int -> Int -> GenPictureRGB8 -> GenPictureRGB8
 translate x y = mapPosition (\ x1 y1->(x1 - x,y1 - y))
 
-data Picture = Line {- Float -} (Float,Float) (Float,Float)
-	| Circle (Float,Float) Float
+data Picture = Line {- Float -} (V2 Float) (V2 Float)
+	| Circle (V2 Float) Float
 	| ManyPicture [Picture]
 	| Color PictureRGB8 Picture
 
@@ -139,46 +147,58 @@ mapPic f (ManyPicture l) = ManyPicture $ fmap (mapPic f) l
 mapPic f p = f p
 
 drowPic :: Picture -> GenPictureRGB8
-drowPic (Line (x1,y1) (x2,y2)) = line 0.5 (x1,y1) (x2,y2) -- (round x1,round y1) (round x2,round y2) -- (ceiling x1,ceiling y1) (ceiling x2,ceiling y2)
-drowPic (Circle (x,y) r) = circle (round x,round y) (round r)
+drowPic (Line (V2 x1 y1) (V2 x2 y2)) = line 0.5 (x1,y1) (x2,y2) -- (round x1,round y1) (round x2,round y2) -- (ceiling x1,ceiling y1) (ceiling x2,ceiling y2)
+drowPic (Circle (V2 x y) r) = circle (round x,round y) (round r)
 drowPic (ManyPicture l) =  foldMap drowPic l
 drowPic (Color c p) = mapColor (\c2->if c2 /= (PictureRGB8 0 0 0) then c else c2) $ drowPic p
+
+reposPic :: Float -> Float -> Picture -> Picture
+reposPic xa ya = mapPic f
+	where
+		f (Line (V2 x1 y1) (V2 x2 y2)) = Line (V2 (x1+xa) (y1+ya)) (V2 (x2+xa) (y2+ya))
+		f (Circle (V2 x y) r) = Circle (V2 (x+xa) (y+ya)) r
+		f (ManyPicture l) = ManyPicture $ fmap (mapPic reverseX) l
+		f (Color c l) = Color c $ mapPic reverseX l
 
 reverseX :: Picture -> Picture
 reverseX = mapPic f
 	where
-		f (Line (x1,y1) (x2,y2)) = Line (-x1,y1) (-x2,y2)
-		f (Circle (x,y) r) = Circle (-x,y) r
+		f (Line (V2 x1 y1) (V2 x2 y2)) = Line (V2 (-x1) y1) (V2 (-x2) y2)
+		f (Circle (V2 x y) r) = Circle (V2 (-x) y) r
 		f (ManyPicture l) = ManyPicture $ fmap (mapPic reverseX) l
 		f (Color c l) = Color c $ mapPic reverseX l
 
 reverseY :: Picture -> Picture
 reverseY = mapPic f
 	where
-		f (Line (x1,y1) (x2,y2)) = Line (x1,-y1) (x2,-y2)
-		f (Circle (x,y) r) = Circle (x,-y) r
+		f (Line (V2 x1 y1) (V2 x2 y2)) = Line (V2 x1 (-y1)) (V2 x2 (-y2))
+		f (Circle (V2 x y) r) = Circle (V2 x (-y)) r
 		f (ManyPicture l) = ManyPicture $ fmap (mapPic reverseY) l
 		f (Color c l) = Color c $ mapPic reverseY l
 
 reverseXY :: Picture -> Picture
 reverseXY = reverseX . reverseY
 
-reverseD :: Picture -> Picture
-reverseD = reverseXY . mapPic f
-	where
-		f (Line (x1,y1) (x2,y2)) = Line (-x1,-y1) (-x2,-y2)
-		f (Circle (x,y) r) = Circle (-x,-y) r
-		f (ManyPicture l) = ManyPicture $ fmap (mapPic reverseY) l
-		f (Color c l) = Color c $ mapPic reverseY l
 -- f2 x = (\y-> (y ^-^ x) ) $ project (0.5,0.5) x
 
 powPic :: Float -> Picture -> Picture
 powPic p = mapPic f
 	where
-		f (Line (x1,y1) (x2,y2)) = Line (x1**p,y1**p) (x2**p,y2**p)
-		f (Circle (x,y) r) = Circle (x**p,y**p) (r**p)
+		f (Line (V2 x1 y1) (V2 x2 y2)) = Line (V2 (x1**p) (y1**p)) (V2 (x2**p) (y2**p))
+		f (Circle (V2 x y) r) = Circle (V2 (x**p) (y**p)) (r**p)
 		f (ManyPicture l) = ManyPicture $ fmap (mapPic (powPic p)) l
 		f (Color c l) = Color c $ mapPic (powPic p) l
+
+rotation :: Float -> Picture -> Picture
+rotation a = mapPic f
+	where
+		mat = V2 (V2 (cos a) (sin a) ) (V2 (-(sin a)) (cos a) )
+		f (Line p1 p2) = Line (mat !* p1) ((mat !* p1)^+^pv)
+			where
+				pv = p2 ^-^ p1
+		f (Circle p1 r) = Circle (mat !* p1) r
+		f (ManyPicture l) = ManyPicture $ fmap (mapPic (rotation a)) l
+		f (Color c l) = Color c $ mapPic (rotation a) l
 
 -- get intersec points 
 
@@ -193,6 +213,47 @@ intersecPoint g1 g2 x1 x2 = join $ forM (Pre.zip [0 .. x1] [0 .. x2]) (\(x,y)->d
 
 -- patern combination 
 
+newtype Repos = Repos (V2 Float)
+
+type ReposAdj = VarAdj Repos
+type ReposAdjointM = ElemAdjointM ReposAdj
+type ReposAdjointW = ElemAdjointW ReposAdj
+
+reposAdj :: Picture -> ReposAdjointM Picture
+reposAdj p = do
+	(Repos (V2 xv yv)) <- getEnvAdjM (Proxy @Repos)
+	return $ reposPic xv yv p
+
+newtype Rotation = Rotation Float
+
+newtype RotationAdj = VarAdj Rotation
+newtype RotationAdjointM = ElemAdjointM RotationAdj
+newtype RotationAdjointW = ElemAdjointW RotationAdj
+
+rotationAdj :: Picture -> M.Adjoint (ElemAdjF (VarAdj Rotation) ) (ElemAdjG (VarAdj Rotation) ) Picture -- ElemAdjointM RotationAdj Picture
+rotationAdj p = do
+	(Rotation yv) <- getEnvAdjM (Proxy @Rotation)
+	return $ rotation yv p
+
+compReposRotatAdj :: Picture 
+	-> M.Adjoint 
+		(ElemAdjF ((VarAdj Rotation) :##: (VarAdj Repos)) ) 
+		(ElemAdjG ((VarAdj Rotation) :##: (VarAdj Repos)) ) 
+		Picture
+compReposRotatAdj p = _a $ compEAdj (reposAdj p) (return ()) >>= 
+	(\(x,_)-> snd <$> compEAdj @(VarAdj Repos) @(VarAdj Rotation) (return ()) (rotationAdj x))
+
+{-
+type instance SysAdjF  = (Env (Float,Float))
+type instance SysAdjG Reposition = (Reader (Float,Float))
+
+type instance SysMonad Reposition = Logic
+type instance SysComonad Reposition = NonEmpty
+
+appRepos :: Picture -> SysAdjMonad Reposition Picture
+appRepos p = undefined
+-}
+-- Maybe trash (
 data CorePicGen = CorePicGen 
 	{ wibthCPG :: First Int
 	, hightCPG :: First Int
@@ -290,3 +351,4 @@ sysGenPicW = join . fmap (NE.fromList) . lowerSysW . extract . extend (\x-> (fma
 
 genCoAndKleisly :: PCAKSysAdj CorePicGen GenPictureRGB8 (Int,Int,PictureRGB8)
 genCoAndKleisly = arrowToPCAKSAarr (\ne-> liftSysM $ msum $ fmap return ne) sysGenPicW
+-- ) maybe trash

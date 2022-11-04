@@ -75,91 +75,149 @@ data SetGetSysG s a b c d = SetGetSysG
 	} 
 -}
 
-type family ElemAdjF (f :: * -> *) where
- ElemAdjF (EnvT e f) = EnvT e (ElemAdjF f)
- ElemAdjF (WriterT e f) = WriterT e (ElemAdjF f)
- ElemAdjF (f1 :.: f2) = (ElemAdjF f2 :.: f1)
- ElemAdjF (f1 :+: f2) = (f1 :+: ElemAdjF f2)
- ElemAdjF (MF.Free f) = MF.Free (ElemAdjF f) 
- ElemAdjF (Yoneda f) = Yoneda (ElemAdjF f)
- ElemAdjF (Coyoneda f) = Coyoneda (ElemAdjF f)
- ElemAdjF Identity = Identity
-
-type family ElemAdjG (f :: * -> *) where -- :: * -> *
- ElemAdjG (ReaderT e g) = ReaderT e (ElemAdjG g)
- ElemAdjG (TracedT e g) = TracedT e (ElemAdjG g)
- ElemAdjG (g1 :.: g2) = g1 :.: (ElemAdjG g2)
- ElemAdjG (g1 :*: g2) = (g1 :*: ElemAdjG g2)
- ElemAdjG (Cofree g) = Cofree (ElemAdjG g)
- ElemAdjG (Yoneda g) = Yoneda (ElemAdjG g)
- ElemAdjG (Coyoneda g) = Coyoneda (ElemAdjG g)
- ElemAdjG Identity = Identity
+type family ElemAdjF s :: * -> *
+type family ElemAdjG s :: * -> *
 {-
-data DataElemAdjF f a where
-	EAEnvT :: Functor f => EnvT e (DataElemAdjF f ) a -> DataElemAdjF (EnvT e f) a
-	EAWriterT :: Functor f => WriterT e (DataElemAdjF f) a -> DataElemAdjF (WriterT e f) a
---	EACompF :: (Functor f1, Functor f2) => (DataElemAdjF f2 :.: f1) a -> DataElemAdjF (f2 :.: f1) a
---	EASumProdF :: (Functor f1, Functor f2) => (f1 :+: DataElemAdjF f2) a -> DataElemAdjF (f1 :+: f2) a	
-	EAFree :: Functor f => MF.Free (DataElemAdjF f) a -> DataElemAdjF (MF.Free f) a
-	EAYonedaF :: Functor f => Yoneda (DataElemAdjF (ElemAdjF f)) a -> DataElemAdjF (Yoneda f) a
-	EACoyonedaF :: Functor f => Coyoneda (DataElemAdjF f) a -> DataElemAdjF (Coyoneda f) a
-	EAIdF :: Identity a -> DataElemAdjF Identity a	
+type family SysAdjF s :: * -> *
+type family SysAdjG s :: * -> *
+type family SysMonad s :: * -> *
+type family SysComonad s :: * -> *
 -}
-data DataElemAdjF a where
-	EAEnvT :: EnvT Dynamic DataElemAdjF a -> DataElemAdjF a
-	EAWriterT :: WriterT [Dynamic] DataElemAdjF a -> DataElemAdjF a
---	EACompF :: (Functor f1, Functor f2) => (DataElemAdjF f2 :.: f1) a -> DataElemAdjF (f2 :.: f1) a
---	EASumProdF :: (Functor f1, Functor f2) => (f1 :+: DataElemAdjF f2) a -> DataElemAdjF (f1 :+: f2) a	
-	EAFree :: MF.Free DataElemAdjF a -> DataElemAdjF a
-	EAYonedaF :: Yoneda DataElemAdjF a -> DataElemAdjF a
-	EACoyonedaF :: Coyoneda DataElemAdjF a -> DataElemAdjF a
-	EAIdF :: Identity a -> DataElemAdjF a	
 
-instance Functor DataElemAdjF where
-	fmap f ( (EAEnvT a)) =  EAEnvT $ fmap f a 
-	fmap f ( (EAWriterT a)) =  EAWriterT $ fmap f a 
---	fmap f ( (EACompF a)) =  EACompF $ fmap f a 
---	fmap f ( (EASumProdF a)) =  EASumProdF $ fmap f a 
-	fmap f ( (EAFree a)) =  EAFree $ fmap f a 
-	fmap f ( (EAYonedaF a)) =  EAYonedaF $ fmap f a 
-	fmap f ( (EACoyonedaF a)) =  EACoyonedaF $ fmap f a 
-	fmap f ( (EAIdF a)) =  EAIdF $ fmap f a 
+type CxtElemAdj f = (Adjunction (ElemAdjF f) (ElemAdjG f)
+	, Functor (ElemAdjG f))
 
-data DataElemAdjG a = DataElemAdjG { 
-	eaReaderT :: ReaderT Dynamic DataElemAdjG a ,
-	eaTracedT :: TracedT [Dynamic] DataElemAdjG a ,
---	eaCompG :: (g1 :.: ElementaryAdjG g2) a -> DataElemAdjG (g1 :.: g2) a
---	eaSumProdG :: (g1 :*: ElementaryAdjG g2) a -> DataElemAdjG (g1 :*: g2) a 
---	eaCompComb :: CompCombG g a
-	eaCofree :: Cofree DataElemAdjG a,
-	eaYonedaG :: Yoneda DataElemAdjG a,
-	eaCoyonedaG :: Coyoneda DataElemAdjG a,
-	eaIdG :: Identity a
-	}
+data VarAdj e 
+data EventAdj e
+data FreeAdj f
+data YonedaAdj f
+data CoyonedaAdj f
+data IdAdj
 
-instance Functor DataElemAdjG where
-	fmap f a = DataElemAdjG 
-		{ eaReaderT = f <$> eaReaderT a
-		, eaTracedT = f <$> eaTracedT a
-		, eaCofree = f <$> eaCofree a
-		, eaYonedaG = f <$> eaYonedaG a
-		, eaCoyonedaG = f <$> eaCoyonedaG a
-		, eaIdG = f <$> eaIdG a		
-		}
+type instance ElemAdjF (VarAdj e) = Env e
+type instance ElemAdjG (VarAdj e) = Reader e
 
-instance Distributive DataElemAdjG where
-	distribute = f2 . distribute . fmap f
-		where
-			f a = eaReaderT a :*: (eaTracedT a :*: (eaCofree a :*: (eaYonedaG a :*: (eaCoyonedaG a :*: (eaIdG a))))) 
-			f2 (eaReaderTa :*: (eaTracedTa :*: (eaCofreea :*: (eaYonedaGa :*: (eaCoyonedaGa :*: (eaIdGa)))))) 
-				= DataElemAdjG 
-					{ eaReaderT = eaReaderTa
-					, eaTracedT = eaTracedTa
-					, eaCofree = eaCofreea
-					, eaYonedaG = eaYonedaGa
-					, eaCoyonedaG = eaCoyonedaGa
-					, eaIdG = eaIdGa
-					}
+type instance ElemAdjF (EventAdj e) = Writer e
+type instance ElemAdjG (EventAdj e) = Traced e
+
+type instance ElemAdjF (FreeAdj f) = MF.Free (ElemAdjF f)
+type instance ElemAdjG (FreeAdj g) = Cofree (ElemAdjG g)
+
+type instance ElemAdjF (f1 :##: f2) = (ElemAdjF f2 :.: ElemAdjF f1) 
+type instance ElemAdjG (g1 :##: g2) = (ElemAdjG g1 :.: ElemAdjG g2) 
+
+type instance ElemAdjF (f1 :+*: f2) = (ElemAdjF f1 :+: ElemAdjF f2) 
+type instance ElemAdjG (g1 :+*: g2) = (ElemAdjG g1 :*: ElemAdjG g2)
+
+type instance ElemAdjF (YonedaAdj f) = Yoneda (ElemAdjF f)
+type instance ElemAdjG (YonedaAdj g) = Yoneda (ElemAdjG g)
+
+type instance ElemAdjF (CoyonedaAdj f) = Coyoneda (ElemAdjF f)
+type instance ElemAdjG (CoyonedaAdj g) = Coyoneda (ElemAdjG g)
+
+type instance ElemAdjF IdAdj = Identity
+type instance ElemAdjG IdAdj = Identity
+
+type ElemAdjointM f = M.Adjoint (ElemAdjF f) (ElemAdjG f)
+type ElemAdjointW f = W.Adjoint (ElemAdjF f) (ElemAdjG f)
+
+mapEAdjF :: CxtElemAdj f => (ElemAdjF f () -> ElemAdjF f a) -> ElemAdjointM f a
+mapEAdjF f = M.AdjointT $ (fmap . fmap) f $ M.runAdjointT $ return ()
+
+mapEAdjFbind :: CxtElemAdj f => (ElemAdjF f a -> ElemAdjF f b) -> ElemAdjointM f a -> ElemAdjointM f b
+mapEAdjFbind f a = M.AdjointT $ (fmap . fmap) f $ M.runAdjointT $ a
+
+compEAdj :: (CxtElemAdj f, CxtElemAdj g) => ElemAdjointM f a -> ElemAdjointM g b -> ElemAdjointM (f :##: g) (a,b)
+compEAdj (M.AdjointT e1) (M.AdjointT e2) = M.AdjointT $ fmap (Identity . Comp1) $ Comp1 $ fmap (\(Identity g2)->
+	 fmap (\(Identity g1)-> fmap (\a->fmap (\b->(b,a)) g2) g1) e2) e1
+
+combEAdj :: (CxtElemAdj f, CxtElemAdj g) 
+	=> ElemAdjointW f a -> ElemAdjointW g b -> [ElemAdjointW (f :+*: g) (Either a b)]
+combEAdj (W.AdjointT e1) (W.AdjointT e2) = fmap W.AdjointT $
+	[L1 ((fmap . fmap) (\g1-> (fmap Left g1) :*: (fmap Right $ extract $ extractL $ e2))  e1)] ++ 
+	[R1 ((fmap . fmap) (\g2-> (fmap Left $ extract $ extractL $ e1) :*: (fmap Right g2)) e2)]
+
+getEnvAdjM :: CxtElemAdj (VarAdj e) => Proxy e -> ElemAdjointM (VarAdj e) e
+getEnvAdjM (p :: Proxy e) = mapEAdjF @(VarAdj e) (extend (fst . runEnv))
+
+getEnvAdjW :: ElemAdjointW (VarAdj e) x -> e
+getEnvAdjW (W.AdjointT a) = (fst . runEnv) a
+
+getEventAdjM :: (CxtElemAdj (EventAdj e), Monoid e) => Proxy e -> ElemAdjointM (EventAdj e) e
+getEventAdjM (p :: Proxy e) = mapEAdjF @(EventAdj e) (return . snd . runWriter)
+
+getEventAdjW :: ElemAdjointW (EventAdj e) x -> e
+getEventAdjW (W.AdjointT a) = (snd . runWriter) a
+
+getFreeAdjM :: CxtElemAdj (FreeAdj f) 
+	=> Proxy f -> ElemAdjointM (FreeAdj f) (MF.Free (ElemAdjF f) ())
+getFreeAdjM (p :: Proxy f) = mapEAdjF @(FreeAdj f) (\x-> fmap (const x) x)
+
+getFreeAdjW :: (CxtElemAdj (FreeAdj f), CxtElemAdj f) 
+	=> ElemAdjointW (FreeAdj f) x -> MF.Free (ElemAdjF f) (ElemAdjG f x)
+getFreeAdjW (W.AdjointT a) = fmap (\(Identity b)->fmap extract $ unwrap b) a
+
+runYonedaAdjM :: (CxtElemAdj (YonedaAdj f), CxtElemAdj f)
+	=> Proxy f 
+	-> (a -> b) -> ElemAdjointM (YonedaAdj f) a 
+	-> ElemAdjointM (YonedaAdj f) (a, b)
+runYonedaAdjM (p :: Proxy f) f (n :: ElemAdjointM (YonedaAdj f) a) = mapEAdjFbind @(YonedaAdj f)
+	(\(Yoneda g)-> Yoneda (\t-> fmap (\a->t (a,f a)) (g id)) ) n
+
+runYonedaAdjW :: (CxtElemAdj (YonedaAdj f), CxtElemAdj f)
+	=> Proxy f 
+	-> (ElemAdjG f a -> b) -> ElemAdjointW (YonedaAdj f) a 
+	-> ElemAdjF f b
+runYonedaAdjW (p :: Proxy f) f (n :: ElemAdjointW (YonedaAdj f) a) = 
+	(\(Yoneda g)-> g f) $ 
+	fmap lowerYoneda $ W.runAdjoint @(Yoneda (ElemAdjF f)) n
+
+hositCoyonedaAdjM :: (CxtElemAdj (YonedaAdj f), CxtElemAdj f)
+	=> (forall x. ElemAdjF f1 x -> ElemAdjF f2 x)	
+	-> (forall x. ElemAdjG f1 x -> ElemAdjG f2 x)	
+	-> ElemAdjointM (CoyonedaAdj f1) a 
+	-> ElemAdjointM (CoyonedaAdj f2) a
+hositCoyonedaAdjM f1 f2 (M.AdjointT a) = M.AdjointT $
+	(fmap . fmap) (hoistCoyoneda f1) $ 
+	hoistCoyoneda f2 a
+
+type instance SysAdjF (VarAdj e) = Env e
+type instance SysAdjG (VarAdj e) = Reader e
+
+type instance SysAdjF (EventAdj e) = Writer e
+type instance SysAdjG (EventAdj e) = Traced e
+
+type instance SysAdjF (FreeAdj f) = MF.Free (ElemAdjF f)
+type instance SysAdjG (FreeAdj g) = Cofree (ElemAdjG g)
+
+type instance SysAdjF (YonedaAdj f) = Yoneda (ElemAdjF f)
+type instance SysAdjG (YonedaAdj g) = Yoneda (ElemAdjG g)
+
+type instance SysAdjF (CoyonedaAdj f) = Coyoneda (ElemAdjF f)
+type instance SysAdjG (CoyonedaAdj g) = Coyoneda (ElemAdjG g)
+
+type instance SysAdjF IdAdj = Identity
+type instance SysAdjG IdAdj = Identity
+
+liftEAdj :: ( SysAdjF s ~ ElemAdjF s
+	, SysAdjG s ~ ElemAdjG s
+	, CxtSystemCore s, CxtElemAdj s  
+	, Typeable (SysAdjF s), Typeable (ElemAdjF s)
+	, Typeable (SysAdjG s), Typeable (ElemAdjG s)
+	, Typeable (SysMonad s), Typeable x, Typeable s
+	) 
+	=> Proxy s -> ElemAdjointM s x -> SysAdjMonad s x  
+liftEAdj (p :: Proxy s) (M.AdjointT e :: ElemAdjointM s x) = fromJust $ cast $ M.AdjointT $ fmap (\(Identity a)->return @(SysMonad s) a) e
+
+lowerEAdj :: ( SysAdjF s ~ ElemAdjF s
+	, SysAdjG s ~ ElemAdjG s
+	, CxtSystemCore s, CxtElemAdj s 
+	, Typeable (SysAdjF s), Typeable (ElemAdjF s)
+	, Typeable (SysAdjG s), Typeable (ElemAdjG s)
+	, Typeable (SysComonad s), Typeable x, Typeable s
+	) 
+	=> Proxy s -> SysAdjComonad s x -> ElemAdjointW s x
+lowerEAdj (p :: Proxy s) (UnSysAdjComonad a) = fromJust $ cast $ W.AdjointT $ fmap (Identity . extract) $ a
 
 class StructurSysAdj s a where
 	getSysAdjF :: Proxy s -> a -> SysAdjF s ()
