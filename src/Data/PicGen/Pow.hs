@@ -4,6 +4,7 @@ module Data.PicGen.Pow where
 
 import Prelude as Pre
 import Extra
+import Linear
 
 import Codec.Picture
 import System.Random
@@ -109,24 +110,24 @@ trapezBSBP i = error $ show i
 
 trapezBorder :: Float -> Picture
 trapezBorder p = Color (PictureRGB8 255 0 0) $ ManyPicture 
-	[ Line (2**p,2**p) (4**p,4**p)
-	, Line (4**p,4**p) (4**p,2**p)
-	, Line (4**p,2**p) (2**p,2**p)
+	[ Line (V2 (2**p) (2**p)) (V2 (4**p) (4**p))
+	, Line (V2 (4**p) (4**p)) (V2 (4**p) (2**p))
+	, Line (V2 (4**p) (2**p)) (V2 (2**p) (2**p))
 	]
 
 
-anyTBSBP :: Int -> Int -> (Float,Float)
+anyTBSBP :: Int -> Int -> (V2 Float)
 anyTBSBP p i = (\(x,y)->
-	(x*2**(intToFloat p), y*2**(intToFloat p) ) ) (trapezBSBP $ abs i)
+	(V2 (x*2**(intToFloat p)) (y*2**(intToFloat p) )) ) (trapezBSBP $ abs i)
 
-anyTBSBPI :: [(Int,Int)] -> [(Float,Float)]
+anyTBSBPI :: [(Int,Int)] -> [(V2 Float)]
 anyTBSBPI = Pre.map (\(x,y)-> anyTBSBP x y)
 
-genTBSBPIlist :: [(Int,Int)] -> [(Float,Float)]
+genTBSBPIlist :: [(Int,Int)] -> [(V2 Float)]
 genTBSBPIlist ((x,y):l) | (x > 0) || (y > 0) = [anyTBSBP x y] ++ (genTBSBPIlist l) --  (mod x pm) (mod y pi)
 genTBSBPIlist _ = []
 
-listPointToLine :: [(Float,Float)] -> [Picture]
+listPointToLine :: [(V2 Float)] -> [Picture]
 listPointToLine (x:y:l) = [Line x y] ++ (listPointToLine l)
 listPointToLine _ = []
 
@@ -144,7 +145,7 @@ drowLinePow n = do
 	--savePicture (translate 250 250 $ drowPic $ Line (0,0) (100,100) ) "drowLinePow" 500 500   
 	savePicture (translate 500 500 $ drowPic $ 
 		-- (\x-> ManyPicture [(reverseX x),(reverseY x),(reverseXY x),x]) $ 
-			(\x-> ManyPicture [reverseD x,x]) $ 
+			(\x-> ManyPicture [reverseXY x,x]) $ 
 		ManyPicture $
 		(Pre.take 20 $ genListPointToLine $ Pre.zip l1 l2)
 		) n 1000 1000
