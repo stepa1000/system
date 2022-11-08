@@ -36,9 +36,11 @@ type CxtSystemCore s =
   ( Adjunction (SysAdjF s) (SysAdjG s)
   , Monad (SysMonad s)
   , Comonad (SysComonad s)
+  -- , System s
   )
 
 --class CxtSystemCore s =>  SystemCore s where
+-- class System s where
 type family SysAdjF s :: * -> *
 type family SysAdjG s :: * -> *
 type family SysMonad s :: * -> *
@@ -62,7 +64,6 @@ pattern UnSysAdjMonad a = SysAdjMonad (M.AdjointT a)
 pattern UnSysAdjComonad a = SysAdjComonad (W.AdjointT a)
 
 -- Kleisli and Cokleisli
-
 data KleisliSAM s x y = KleisliSAM {unKleisliSAM' :: Kleisli (SysAdjMonad s) x y}deriving (C.Category,Arrow)
 data CokleisliSAW s x y = CokleisliSAW {unCokleisliSAW' :: Cokleisli (SysAdjComonad s) x y}deriving (C.Category,Arrow)
 

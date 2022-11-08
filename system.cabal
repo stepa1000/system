@@ -27,13 +27,13 @@ library
   exposed-modules:
       Control.Core.Anything
       Control.Core.Composition
-      Control.Core.Density
+      Control.Core.Postlude
       Control.Core.Powsition
       Control.Core.Structur
       Control.Core.System
-      Control.Core.YonedaIO
       Control.Prelude
       Control.Prelude2
+      Control.Simple.Joing
       Data.PicGen.Core
       Data.PicGen.Pow
       Lib
@@ -63,6 +63,7 @@ library
     , profunctors
     , random
     , these
+    , vector
   default-language: Haskell2010
 
 executable system-exe
@@ -94,6 +95,7 @@ executable system-exe
     , random
     , system
     , these
+    , vector
   default-language: Haskell2010
 
 test-suite system-test
@@ -126,4 +128,5 @@ test-suite system-test
     , random
     , system
     , these
+    , vector
   default-language: Haskell2010

@@ -1,7 +1,10 @@
-{-# Language TypeFamilies, DeriveAnyClass, TypeApplications #-}
+{-# Language TypeFamilies, DeriveAnyClass, TypeApplications
+  , TypeOperators
+#-}
 
 module Data.PicGen.Pow where
 
+import GHC.Generics
 import Prelude as Pre
 import Extra
 import Linear
@@ -19,40 +22,25 @@ import Control.Comonad.Trans.Env
 import Control.Comonad
 import Control.Comonad.Trans.Class
 
+import Control.Comonad.Trans.Store
+
 import Data.List.NonEmpty as NE
 import Data.Word
 import Data.Proxy 
 import Data.PicGen.Core
 
 import Data.Functor.Adjunction
+import qualified Data.Vector as Vec
+import Data.Function
+import Data.Maybe
 
 import Control.Core.System
-{-
-powsquare2 :: Int -> Int
-powsquare2 i = ceiling $ (sqrt 2 :: Float) ^ i
-pow2 i = 2 ^ i
+import Control.Core.Composition
+import Control.Core.Structur
 
-boxToPowSq i = (line (x,x) (x,-x)) <> (line (x,-x) (-x,-x)) <> (line (-x,-x) (-x,x)) <> (line (-x,x) (x,x))
-	where
-		x = powsquare2 i 
+import Control.Core.Postlude
+import Control.Simple.Joing
 
-boxToPow i = (line (x,x) (x,-x)) <> (line (x,-x) (-x,-x)) <> (line (-x,-x) (-x,x)) <> (line (-x,x) (x,x))
-	where
-		x = pow2 i 
-
-boxLine i i2 = fmap (\j->boxToPowSq j ) [i..i2]
-
-powCircleSq i = circle (0,0) (powsquare2 i)
-
-powCircleLine i i2 x y = fmap (\j->circle (x * (pow2 i), y * (pow2 i)) (pow2 i) ) [i..i2]
-
-manyPowCircleSq i i2 = fmap (\j->powCircleSq j ) [i..i2] -- mconcat
-
-manyPowCircleLine i i2 = (fmap (\j->powCircleLine j j 1 0) $ [i..i2] ) <>
-	(fmap (\j->powCircleLine j j 0 1 ) $ [i..i2]) <>
-	(fmap (\j->powCircleLine j j 0 (-1)) $ [i..i2]) <>
-	(fmap (\j->powCircleLine j j (-1) 0) $ [i..i2])
--}
 bsbRR :: Int -> Int -> (Float,Float)
 bsbRR n' k' = (x,y)
 	where
@@ -127,6 +115,64 @@ genTBSBPIlist :: [(Int,Int)] -> [(V2 Float)]
 genTBSBPIlist ((x,y):l) | (x > 0) || (y > 0) = [anyTBSBP x y] ++ (genTBSBPIlist l) --  (mod x pm) (mod y pi)
 genTBSBPIlist _ = []
 
+type GenTBSBPI = [(V2 Float)]
+type GenTBSBPIAdj = EventAdj GenTBSBPI
+type GenTBSBPIAdjointM = ElemAdjointM GenTBSBPIAdj
+type GenTBSBPIAdjointW = ElemAdjointW GenTBSBPIAdj
+
+type instance SysMonad (GenTBSBPIAdj) = IO
+type instance SysComonad (GenTBSBPIAdj) = Store StdGen
+
+genTBSBPIlistAdjPic :: GenTBSBPIAdjointM [Picture]
+genTBSBPIlistAdjPic = do
+	lp <- getEventAdjM (Proxy @GenTBSBPI)
+	return $ listPointToLine lp
+{-
+type JoingAdj a b = VarAdj (Joing a b)
+
+--instance System (Joing a b) where
+--type instance SysAdjF (JoingAdj a b) = ElemAdjF (JoingAdj a b)
+--type instance SysAdjG (JoingAdj a b) = ElemAdjG (JoingAdj a b) 
+type instance SysMonad (JoingAdj a b) = IO
+type instance SysComonad (JoingAdj a b) = Store StdGen	
+-}
+joingV2 :: SysAdjMonad (GenTBSBPIAdj :##: (JoingAdj (V2 Float) Picture)) Picture
+joingV2 = () & cCompSysAdjM (Proxy @(GenTBSBPIAdj,(JoingAdj (V2 Float) Picture))) 
+	(const $ getEventSysAdjM (Proxy @GenTBSBPI)) (fmap ManyPicture . joingSysMN (Proxy @Picture) 50 . Vec.fromList)
+
+type instance SysMonad (VarAdj Repos) = IO
+type instance SysComonad (VarAdj Repos) = Store StdGen
+type instance SysMonad (VarAdj Rotation) = IO
+type instance SysComonad (VarAdj Rotation) = Store StdGen
+
+joingV2PosRot :: SysAdjMonad 
+	((GenTBSBPIAdj :##: 
+	(JoingAdj (V2 Float) Picture)) :##: (
+	VarAdj Repos :##: 
+	VarAdj Rotation)
+	) Picture
+joingV2PosRot = () & cCompSysAdjM 
+	(Proxy @(GenTBSBPIAdj :##: (JoingAdj (V2 Float) Picture)
+		, (VarAdj Repos :##: VarAdj Rotation)))
+	(const joingV2)
+	(liftEAdj (Proxy @(VarAdj Repos :##: VarAdj Rotation)) . compReposRotatAdj)
+
+jV2PosRotMul :: (Picture -> SysAdjMonad (GenTBSBPIAdj :##: 
+		(JoingAdj (V2 Float) Picture))
+		Picture) 
+	-> Float 
+	-> SysAdjMonad 
+		((GenTBSBPIAdj :##: 
+		(JoingAdj (V2 Float) Picture)) :##: (
+		VarAdj Repos :##: 
+		VarAdj Rotation)
+		) Picture
+jV2PosRotMul fm vm = () & cCompSysAdjM 
+	(Proxy @(GenTBSBPIAdj :##: (JoingAdj (V2 Float) Picture)
+		, (VarAdj Repos :##: VarAdj Rotation)))
+	(const ((>>= fm) $ fmap (multPic vm) joingV2) )
+	(liftEAdj (Proxy @(VarAdj Repos :##: VarAdj Rotation)) . compReposRotatAdj)
+
 listPointToLine :: [(V2 Float)] -> [Picture]
 listPointToLine (x:y:l) = [Line x y] ++ (listPointToLine l)
 listPointToLine _ = []
@@ -135,6 +181,62 @@ genListPointToLine :: [(Int,Int)] -> [Picture]
 genListPointToLine li = listPointToLine $ genTBSBPIlist li
 
 -- Test translate 500 500 $trapezBorder 3
+
+drowLPAdjRand :: String -> IO ()
+drowLPAdjRand n = do
+	l <- genRandListZip 2 20
+	vp <- extractL <$> (runSysAdj @((GenTBSBPIAdj :##: 
+		(JoingAdj (V2 Float) Picture)) :##: (
+		VarAdj Repos :##: 
+		VarAdj Rotation)) (jV2PosRotMul (return . triangleRotation . reverseXYFull . triangleRotation) 4) )
+			( Comp1 $ fmap ( const $ Comp1 
+				( env (Joing 
+					{ joingNumObj = 299
+					, joingNumApp = 4
+					, joingFun = \v-> ManyPicture $! ([Line (Vec.head v) (Vec.last v)] ++) $ Vec.ifoldr (f v) [] v
+					}) 
+					(tell $ genTBSBPIlist $ Pre.take 300 l)
+				) )
+				$ (Comp1
+				(env (Rotation 0) (env (Repos $ V2 (500) (500)) ()) )
+				)
+			)
+	savePicture (drowPic vp)
+		n 1000 1000
+	where
+		f :: Vec.Vector (V2 Float) -> Int -> V2 Float -> [Picture] -> [Picture]
+		f v i p lp = (do
+			p2 <- maybeToList $ v Vec.!? (i+1)	
+			return $ Line p p2
+			) ++ lp 
+
+triangleRotatTest ::  String -> IO ()
+triangleRotatTest n = do
+	l <- genRandListZip 3 20
+	savePicture (translate 500 500 $ drowPic $ triangleRotation $ reverseXYFull $ powPicN [2] $ triangleRotation $
+		ManyPicture $
+		Pre.take 20 $ genListPointToLine l
+		) n 1000 1000
+	
+genRandListZip :: Int -> Int ->  IO [(Int,Int)]
+genRandListZip powI pointI = do
+	s <- initStdGen
+	let l1 = randomRs (1,powI)  s
+	s2 <- initStdGen
+	let l2 = randomRs (1,pointI) s2
+	return $ Pre.zip l1 l2
+
+drowLPAdj :: String -> IO ()
+drowLPAdj n = do
+	l <- genRandListZip 3 20
+	--savePicture (translate 250 250 $ drowPic $ Line (0,0) (100,100) ) "drowLinePow" 500 500   
+	savePicture (drowPic $ extractL $ (\f->f $ Comp1
+			(env (Rotation 30) (env (Repos $ V2 (500) (500)) ()) ) 
+		) $ runEAdj @(VarAdj Repos :##: VarAdj Rotation) $ genPicEAdj 300 l) n 1000 1000
+
+genPicEAdj :: Int -> [(Int,Int)] -> ElemAdjointM (VarAdj Repos :##: VarAdj Rotation) Picture
+genPicEAdj i l = compReposRotatAdj $ ManyPicture $ 
+		genListPointToLine $ Pre.take i l
 
 drowLinePow :: String -> IO ()
 drowLinePow n = do
@@ -149,6 +251,7 @@ drowLinePow n = do
 		ManyPicture $
 		(Pre.take 20 $ genListPointToLine $ Pre.zip l1 l2)
 		) n 1000 1000
+
 {-
 testBox = saveCorePicGen
 	(CorePicGen 

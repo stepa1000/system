@@ -40,6 +40,7 @@ dependencies:
 - random
 - these
 - ghc-prim
+- vector
 #- bmp
 
 ghc-options:

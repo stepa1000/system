@@ -42,13 +42,15 @@ import Control.Core.System
 import Control.Core.Composition
 import Control.Core.Structur
 
+import Debug.Trace
+
 testPic = savePicture (ray 2 (0,0) (100,50) )  "testPic" 500 500
 
 data PictureRGB8 = PictureRGB8 
 	{ redSum :: Sum Word8
 	, greenSum :: Sum Word8
 	, blueSum :: Sum Word8
-	} deriving (Eq)
+	} deriving (Eq, Show)
 
 instance Semigroup PictureRGB8 where
   (<>) (PictureRGB8 x1 y1 z1) (PictureRGB8 x2 y2 z2) = PictureRGB8 (x1 <> x2) (y1 <> y2) (z1 <> z2)
@@ -141,6 +143,7 @@ data Picture = Line {- Float -} (V2 Float) (V2 Float)
 	| Circle (V2 Float) Float
 	| ManyPicture [Picture]
 	| Color PictureRGB8 Picture
+	deriving Show
 
 mapPic :: (Picture -> Picture) -> Picture -> Picture
 mapPic f (ManyPicture l) = ManyPicture $ fmap (mapPic f) l
@@ -179,6 +182,9 @@ reverseY = mapPic f
 reverseXY :: Picture -> Picture
 reverseXY = reverseX . reverseY
 
+reverseXYFull :: Picture -> Picture
+reverseXYFull p = ManyPicture [p,reverseX p,reverseY p,reverseXY p]
+
 -- f2 x = (\y-> (y ^-^ x) ) $ project (0.5,0.5) x
 
 powPic :: Float -> Picture -> Picture
@@ -189,16 +195,31 @@ powPic p = mapPic f
 		f (ManyPicture l) = ManyPicture $ fmap (mapPic (powPic p)) l
 		f (Color c l) = Color c $ mapPic (powPic p) l
 
+multPic :: Float -> Picture -> Picture
+multPic p = mapPic f
+	where
+		f (Line (V2 x1 y1) (V2 x2 y2)) = Line (V2 (x1*p) (y1*p)) (V2 (x2*p) (y2*p))
+		f (Circle (V2 x y) r) = Circle (V2 (x*p) (y*p)) (r*p)
+		f (ManyPicture l) = ManyPicture $ fmap (mapPic (multPic p)) l
+		f (Color c l) = Color c $ mapPic (multPic p) l
+
+powPicN :: [Float] -> Picture -> Picture
+powPicN l p = ManyPicture $ fmap (\x-> powPic x p) l
+
 rotation :: Float -> Picture -> Picture
 rotation a = mapPic f
 	where
 		mat = V2 (V2 (cos a) (sin a) ) (V2 (-(sin a)) (cos a) )
-		f (Line p1 p2) = Line (mat !* p1) ((mat !* p1)^+^pv)
-			where
-				pv = p2 ^-^ p1
+		f (Line p1 p2) = Line (mat !* p1) (mat !* p2)
 		f (Circle p1 r) = Circle (mat !* p1) r
 		f (ManyPicture l) = ManyPicture $ fmap (mapPic (rotation a)) l
 		f (Color c l) = Color c $ mapPic (rotation a) l
+
+triangleRotation :: Picture -> Picture
+triangleRotation p = ManyPicture 
+	[ p
+	, rotation 90 $ reverseX p
+	]
 
 -- get intersec points 
 
@@ -226,129 +247,24 @@ reposAdj p = do
 
 newtype Rotation = Rotation Float
 
-newtype RotationAdj = VarAdj Rotation
-newtype RotationAdjointM = ElemAdjointM RotationAdj
-newtype RotationAdjointW = ElemAdjointW RotationAdj
 
-rotationAdj :: Picture -> M.Adjoint (ElemAdjF (VarAdj Rotation) ) (ElemAdjG (VarAdj Rotation) ) Picture -- ElemAdjointM RotationAdj Picture
+type RotationAdj = VarAdj Rotation
+type RotationAdjointM = ElemAdjointM RotationAdj
+type RotationAdjointW = ElemAdjointW RotationAdj
+
+rotationAdj :: Picture -> RotationAdjointM Picture -- ElemAdjointM RotationAdj Picture
 rotationAdj p = do
 	(Rotation yv) <- getEnvAdjM (Proxy @Rotation)
 	return $ rotation yv p
 
 compReposRotatAdj :: Picture 
-	-> M.Adjoint 
-		(ElemAdjF ((VarAdj Rotation) :##: (VarAdj Repos)) ) 
-		(ElemAdjG ((VarAdj Rotation) :##: (VarAdj Repos)) ) 
-		Picture
-compReposRotatAdj p = _a $ compEAdj (reposAdj p) (return ()) >>= 
-	(\(x,_)-> snd <$> compEAdj @(VarAdj Repos) @(VarAdj Rotation) (return ()) (rotationAdj x))
+	-> ElemAdjointM ((VarAdj Repos) :##: (VarAdj Rotation))	Picture
+compReposRotatAdj p = compEAdj @(VarAdj Repos) @(VarAdj Rotation) (return ()) (rotationAdj p) >>= 
+	(\(_,x)-> fst <$> compEAdj @(VarAdj Repos) @(VarAdj Rotation) (reposAdj x) (return ()))
 
-{-
-type instance SysAdjF  = (Env (Float,Float))
-type instance SysAdjG Reposition = (Reader (Float,Float))
 
-type instance SysMonad Reposition = Logic
-type instance SysComonad Reposition = NonEmpty
+type PicDrow = [Picture]
+type PicDrowAdj = EventAdj PicDrow
 
-appRepos :: Picture -> SysAdjMonad Reposition Picture
-appRepos p = undefined
--}
--- Maybe trash (
-data CorePicGen = CorePicGen 
-	{ wibthCPG :: First Int
-	, hightCPG :: First Int
-	} deriving (Monoid, Semigroup)
-
-type instance SysAdjF CorePicGen = (Env CorePicGen)
-type instance SysAdjG CorePicGen = (Reader CorePicGen)
-
-type instance SysMonad CorePicGen = Logic
-type instance SysComonad CorePicGen = NonEmpty
-
-runCorePicGen :: CorePicGen -> SysAdjMonad CorePicGen a -> [a] 
-runCorePicGen cpg msam = fmap extractL $ (\x-> observeAll $ runReader x cpg) $ runSysAdjMonad msam
-
-saveCorePicGen :: CorePicGen -> SysAdjMonad CorePicGen (Int,Int,PictureRGB8) -> String -> Int -> Int -> IO ()
-saveCorePicGen cpg msam nameF w h = (\x-> savePicture 
-		(\z y-> maybe (PictureRGB8 0 0 0) id $ x Ml.!? (z,y) ) nameF w h
-	) $ mconcat $ fmap (\(x,y,z)-> Ml.singleton (x,y) z) $ runCorePicGen cpg msam
-
-saveCorePicGenDef :: SysAdjMonad CorePicGen (Int,Int,PictureRGB8) -> IO ()
-saveCorePicGenDef s = saveCorePicGen
-	(CorePicGen 
-		{ wibthCPG = First $ Just 1000
-		, hightCPG = First $ Just 1000
-		}
-	)
-	s
-	"defName"
-	1000
-	1000
-
-sysGenPicM :: GenPictureRGB8 -> SysAdjMonad CorePicGen (Int,Int,PictureRGB8)
-sysGenPicM gpRGB = do
-	lp <- sysAdjMapMF (Proxy :: Proxy (CorePicGen) ) 
-		(\(EnvT a b)-> EnvT a (
-			fmap (const 
-				(Pre.zip [0..(fromJust $ getFirst $ wibthCPG a)] [0..(fromJust $ getFirst $ hightCPG a)])
-			) b)
-		) -- (fmap (snd . extract . runWriterT) . duplicateL)
-	liftSysM $ join $ fmap msum $ forM lp (\ (x,y) -> do
-		return $ return (x,y,gpRGB x y)
-		)
-
-getListIxM :: SysAdjMonad CorePicGen [(Int,Int)]
-getListIxM = sysAdjMapMF (Proxy :: Proxy (CorePicGen) ) 
-		(\(EnvT a b)-> EnvT a (
-			fmap (const 
-				(Pre.zip [0..(fromJust $ getFirst $ wibthCPG a)] [0..(fromJust $ getFirst $ hightCPG a)])
-			) b)
-		)
-
-getListIxW :: SysAdjComonad CorePicGen x -> SysAdjComonad CorePicGen [(Int,Int)]
-getListIxW = sysAdjMapWG  
-		(\mr-> mr >> Re.ask >>= (\a-> return $
-				Pre.zip [0..(fromJust $ getFirst $ wibthCPG a)] [0..(fromJust $ getFirst $ hightCPG a)]
-		))
-getMap :: Ord k 
-	=> SysAdjMonad CorePicGen (k,a) -> SysAdjMonad CorePicGen (Map k [a])
-getMap = mapSysM (return. Pre.foldr (unionWith (++)) Ml.empty . fmap (\(k,a)->Ml.singleton k [a]) )
-
-intersecSysGPMMap :: SysAdjMonad CorePicGen (Int,Int,PictureRGB8) -> SysAdjMonad CorePicGen (Int,Int,PictureRGB8)
-intersecSysGPMMap = mapSysM (join . fmap (foldToAlt . mapWithKey (\ (x,y) a -> (\z->(x,y,z)) $ Pre.head a))) . 
-	fmap ( Ml.filter ((> 1) . Pre.length)) . getMap . fmap (\(x,y,z)->((x,y),z))
-
-foldToAltSys :: Foldable f => f a -> SysAdjMonad CorePicGen a
-foldToAltSys f = mapSysM (>> (foldToAlt f)) $ return ()
-
-foldToAlt :: (Foldable f, Alternative m) => f a -> m a
-foldToAlt = Pre.foldr (\a m-> (pure a) <|> m) App.empty
-
-intersecSysGPMApp :: SysAdjMonad CorePicGen (Int,Int,PictureRGB8) -> SysAdjMonad CorePicGen (Int,Int,PictureRGB8)
-intersecSysGPMApp (!m) = mapSysM (join . fmap (maybe App.empty return)) $ liftA2 (\ x y-> if x == y 
-	then Just x
-	else Nothing
-	) m m
-
-intersecSysGPM :: SysAdjMonad CorePicGen (Int,Int) -> SysAdjMonad CorePicGen (Int,Int)
-intersecSysGPM = mapSysM (\m-> m >>- (\(x,y)->do
-	--lp <- liftSysM $ many (unSysAdjMonad m)
-	(x1,y1) <- m
-	if (x == x1) && (y == y1)
-			then return (x,y)
-			else App.empty
-	))
-{-	liftSysM $ join  $ fmap msum $ (fmap . fmap) return $ forM lp (\(x1,y1)-> do
-		if (x == x1) && (y == y1)
-			then return (x,y)
-			else lift $ empty
-		)
-	)
--}
-sysGenPicW :: SysAdjComonad CorePicGen GenPictureRGB8 -> NonEmpty (Int,Int,PictureRGB8)
-sysGenPicW = join . fmap (NE.fromList) . lowerSysW . extract . extend (\x-> (fmap (\(a,b)-> (a,b,(extract x) a b ))) <$> getListIxW x)
---sysGenPicW = join $ fmap (\(x,y)-> NE.fromList $ fmap (\(x1,y1)-> (x1,y1,x x1 y1) ) y ) . lowerSysW . _a . sysAdjMapWG Tr.listen
-
-genCoAndKleisly :: PCAKSysAdj CorePicGen GenPictureRGB8 (Int,Int,PictureRGB8)
-genCoAndKleisly = arrowToPCAKSAarr (\ne-> liftSysM $ msum $ fmap return ne) sysGenPicW
--- ) maybe trash
+picDrowAdjM :: [Picture] -> ElemAdjointM PicDrowAdj ()
+picDrowAdjM lp = mapEAdjF @PicDrowAdj (>> tell lp)

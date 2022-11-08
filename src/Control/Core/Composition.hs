@@ -44,6 +44,7 @@ data (:+*:) a b = CjmbAdj a b
 type CxtSysAdjComp s1 s2 = (SysAdjF (s1 :##: s2) ~ (SysAdjF s2 :.: SysAdjF s1)
 	, SysAdjG (s1 :##: s2) ~ (SysAdjG s1 :.: SysAdjG s2))
 
+-- instance (System s1,System s2) => System (s1 :##: s2) where
 type instance SysAdjF (s1 :##: s2) = (SysAdjF s2 :.: SysAdjF s1)
 type instance SysAdjG (s1 :##: s2) = (SysAdjG s1 :.: SysAdjG s2)
 type instance SysMonad (s1 :##: s2) = SysMonad s1
@@ -54,6 +55,7 @@ type instance SysComonad (s1 :##: s2) = SysComonad s1
 type CxtSysAdjComb s1 s2 = (SysAdjF (s1 :+*: s2) ~ (SysAdjF s2 :+: SysAdjF s1)
 	, SysAdjG (s1 :+*: s2) ~ (SysAdjG s1 :*: SysAdjG s2))
 
+-- instance (System s1,System s2) => System (s1 :+*: s2) where
 type instance SysAdjF (s1 :+*: s2) = (SysAdjF s1 :+: SysAdjF s2)
 type instance SysAdjG (s1 :+*: s2) = (SysAdjG s1 :*: SysAdjG s2)
 type instance SysMonad (s1 :+*: s2) = SysMonad s1

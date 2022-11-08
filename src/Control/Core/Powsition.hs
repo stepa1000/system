@@ -48,6 +48,7 @@ import Unsafe.Coerce
 
 data (:^^:) a b = Powsition a b
 
+-- instance (System s1, System s2) => System (s1 :^^: s2) where
 type instance SysAdjF (s1 :^^: s2) = SysAdjF s2
 type instance SysAdjG (s1 :^^: s2) = SysAdjG s2
 type instance SysMonad (s1 :^^: s2) = SysAdjMonad s1 :*: SysMonad s2
@@ -152,7 +153,7 @@ type ProObjSubjectAndAdjF s1 s2 r = Inv.Free (PCAKSysAdj s1 r :.: SysAdjF s2)
 	(\ x y-> ((@$^^) p) (unComp1 x) y ) o1 o2 -- (mapFree unProCoAndKleisliSysAdj' o1 ) (mapFree unProCoAndKleisliSysAdj' o2)
 
 -- Tree Adjunction
-
+{-
 data TreeAdj (n :: Nat) (b :: Bool) s = TreeAdj (Proxy n) (Proxy b) s
 
 type instance SysAdjF (TreeAdj (n :: Nat) 'True s) = (SysAdjF s) :.: (MF.Free (SysAdjF (TreeAdj (n - 1) (1 <=? (n-1)) s)))
@@ -172,7 +173,7 @@ treeAdj :: ( CxtSystemCore s, SysAdjMonad s a ~ SysAdjMonad (TreeAdj 0 'False s)
 	) 
 	=> SysAdjMonad s a -> SysAdjMonad (TreeAdj 0 'False s) a
 treeAdj (s :: SysAdjMonad s a) = fromJust $ cast s
-
+-}
 data TreeAdjGADF s a where
 	NodeTAF ::((SysAdjF s) :.: (MF.Free (TreeAdjGADF s))) a -> TreeAdjGADF s a
 	LeafTAF :: SysAdjF s a -> TreeAdjGADF s a
